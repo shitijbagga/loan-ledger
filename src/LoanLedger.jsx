@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ReferenceDot, ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import { Plus, Trash2, TrendingDown, CalendarClock, Wallet, PiggyBank, Receipt, Home } from "lucide-react";
+import { loadOrCreateScenario, saveScenario } from "./loanStore";
 
 /* ---------------------------------------------------------------- */
 /* Date helpers                                                      */
@@ -144,11 +145,43 @@ function Stat({ icon, label, value, sub, accent }) {
 /* ---------------------------------------------------------------- */
 /* Main component                                                     */
 /* ---------------------------------------------------------------- */
-export default function LoanLedger() {
+export default function LoanLedger({ userId }) {
   const [inputs, setInputs] = useState(DEFAULT_INPUTS);
-  const [events, setEvents] = useState(DEFAULT_EVENTS);
+  const [events, setEvents] = useState([]);
   const [draft, setDraft] = useState({ date: "", type: "EXTRA_PRINCIPAL", value: "", notes: "" });
   const [showAllRows, setShowAllRows] = useState(false);
+  const [scenarioId, setScenarioId] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [savedAt, setSavedAt] = useState(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    loadOrCreateScenario(userId)
+      .then((result) => {
+        setScenarioId(result.scenarioId);
+        setInputs(result.inputs);
+        setEvents(result.events);
+        setLoaded(true);
+      })
+      .catch((err) => {
+        setSaveError(err.message);
+        setLoaded(true);
+      });
+  }, [userId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveScenario(scenarioId, inputs, events);
+      setSavedAt(Date.now());
+    } catch (err) {
+      setSaveError(err.message);
+    }
+    setSaving(false);
+  };
 
   const setInput = (key) => (e) => {
     const v = e.target.value;
@@ -251,6 +284,14 @@ export default function LoanLedger() {
   };
 
   const visibleRows = showAllRows ? actual : actual.slice(0, 36);
+
+  if (!loaded) {
+    return (
+      <div style={{ padding: 60, textAlign: "center", fontFamily: "Inter, sans-serif", color: "#6B7A78" }}>
+        Loading your loan…
+      </div>
+    );
+  }
 
   return (
     <div className="ledger-app">
@@ -402,11 +443,20 @@ export default function LoanLedger() {
         .row-flag { font-size: 10px; padding: 1px 5px; border-radius: 3px; color: white; margin-left: 6px; }
       `}</style>
 
-      <div className="header">
-        <div className="eyebrow">Step-based loan ledger</div>
-        <div className="title">Loan Amortization Planner</div>
-        <div className="subtitle">
-          Linear (Swedish-style) amortization — fixed monthly principal, adjustable via dated events.
+      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
+        <div>
+          <div className="eyebrow">Step-based loan ledger</div>
+          <div className="title">Loan Amortization Planner</div>
+          <div className="subtitle">
+            Linear (Swedish-style) amortization — fixed monthly principal, adjustable via dated events.
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <button onClick={handleSave} disabled={saving} className="add-btn" style={{ background: "#BB6B3C" }}>
+            {saving ? "Saving..." : "Save"}
+          </button>
+          {savedAt && !saving && <div style={{ fontSize: 11.5, color: "#4C7A6D", marginTop: 6 }}>Saved ✓</div>}
+          {saveError && <div style={{ fontSize: 11.5, color: "#BB6B3C", marginTop: 6, maxWidth: 220 }}>{saveError}</div>}
         </div>
       </div>
 
